@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>스마트 독서대 v4 + BLE</title>
+<title>스마트 독서대 v7 + BLE</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,'Noto Sans KR',sans-serif;background:#0a0a0a;color:#fff;overflow:hidden;height:100dvh;display:flex;flex-direction:column}
@@ -61,7 +61,7 @@ body{font-family:-apple-system,'Noto Sans KR',sans-serif;background:#0a0a0a;colo
 </div>
 
 <div id="top">
-  <h1>스마트 독서대 v4</h1>
+  <h1>스마트 독서대 v7</h1>
   <div id="badge">로딩 중</div>
 </div>
 
@@ -249,12 +249,23 @@ async function sendBLE(cmd){
   }
 }
 
-// 상태가 변할 때만 전송 (중복 방지는 하되 rate limit 제거)
+// 상태 전송: 변경 시 즉시 + 1.5초마다 재전송 (BLE 유실 방지)
 var currentState = '';
+var lastSendTime = 0;
 function sendState(state){
-  if(state === currentState) return;
-  currentState = state;
-  sendBLE(state);
+  var now = Date.now();
+  // 상태 변경 → 즉시 전송
+  if(state !== currentState) {
+    currentState = state;
+    sendBLE(state);
+    lastSendTime = now;
+    return;
+  }
+  // 같은 상태라도 1.5초마다 재전송 (유실 방지)
+  if(now - lastSendTime > 1500) {
+    sendBLE(state);
+    lastSendTime = now;
+  }
 }
 
 // ============ BUTTON HANDLERS ============
@@ -302,7 +313,7 @@ $('bar-m').style.left = (EAR_TH / 0.4 * 100) + '%';
 
 // ============ MAIN INIT ============
 async function main(){
-  addLog('앱 시작 v4+BLE');
+  addLog('앱 시작 v7');
 
   // CAMERA
   $('load-msg').textContent = '카메라 접근 요청 중...';
@@ -474,19 +485,27 @@ function checkDrowsy(ear){
     // 누적 감김 시간 표시
     $('v-cnt').textContent = formatTime(totalSec);
     if(sec >= CLOSE_DUR) {
-      $('v-cnt').style.color = '#fca5a5';
-    } else if(sec >= 5) {
-      $('v-cnt').style.color = '#fbbf24';
+      $('v-cnt').style.color = '#fca5a5';     // 빨강: DROWSY
+      $('v-st').textContent = 'DROWSY';
+      $('v-st').style.color = '#fca5a5';
+    } else if(sec >= 3) {
+      $('v-cnt').style.color = '#fbbf24';     // 노랑: CLOSED
+      $('v-st').textContent = 'CLOSED';
+      $('v-st').style.color = '#fbbf24';
     } else {
-      $('v-cnt').style.color = '#6ee7b7';
+      $('v-cnt').style.color = '#6ee7b7';     // 초록: 아직 정상
     }
 
-    if(sec >= CLOSE_DUR && !isAlerted){
-      isAlerted = true;
-      showAlert();
-      if(soundOn) playBeep();
+    if(sec >= CLOSE_DUR) {
+      // ★ 2단계 이상: 계속 DROWSY 전송
+      if(!isAlerted) {
+        isAlerted = true;
+        showAlert();
+        if(soundOn) playBeep();
+      }
       sendState('DROWSY');
     } else if(sec >= 3) {
+      // ★ 1단계: CLOSED 전송
       sendState('CLOSED');
     }
   } else {
