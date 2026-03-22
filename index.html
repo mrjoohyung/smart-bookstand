@@ -181,10 +181,15 @@ async function connectBLE(){
 
     bleConnected = true;
     $('ble-dot').classList.add('on');
-    $('ble-status').textContent = bleDevice.name || 'HM-10 연결됨';
+    $('ble-status').textContent = bleDevice.name || 'BLE 연결됨';
     $('b-ble').textContent = '연결됨';
 
-    // 테스트 전송
+    // BLE 특성 정보 로그 (디버그용)
+    var p = bleChar.properties;
+    console.log('[BLE] Properties - write:' + p.write + ' writeWithoutResponse:' + p.writeWithoutResponse + ' read:' + p.read + ' notify:' + p.notify);
+    $('ble-status').textContent = (bleDevice.name || 'BLE') + ' (W:' + (p.write?'Y':'N') + ' WnR:' + (p.writeWithoutResponse?'Y':'N') + ')';
+
+    // 연결 확인 전송
     await sendBLE('HELLO');
 
   } catch(err) {
@@ -200,26 +205,41 @@ async function sendBLE(cmd){
   try {
     var encoder = new TextEncoder();
     var data = encoder.encode(cmd + '\n');
-    // HM-10은 writeWithoutResponse를 사용해야 하는 경우가 많음
-    if(bleChar.properties.writeWithoutResponse) {
-      await bleChar.writeValueWithoutResponse(data);
-    } else {
-      await bleChar.writeValue(data);
+    var sent = false;
+
+    // 방법 1: writeValueWithoutResponse (대부분의 HM-10)
+    if(!sent && bleChar.properties.writeWithoutResponse) {
+      try {
+        await bleChar.writeValueWithoutResponse(data);
+        sent = true;
+      } catch(e) { console.log('Method 1 failed:', e.message); }
     }
-    $('v-ble').textContent = cmd;
-    $('v-ble').style.color = cmd === 'OK' ? '#6ee7b7' : (cmd === 'DROWSY' ? '#fca5a5' : '#fbbf24');
-    console.log('[BLE SENT] ' + cmd);
+    // 방법 2: writeValueWithResponse
+    if(!sent && bleChar.properties.write) {
+      try {
+        await bleChar.writeValueWithResponse(data);
+        sent = true;
+      } catch(e) { console.log('Method 2 failed:', e.message); }
+    }
+    // 방법 3: writeValue (구버전 호환)
+    if(!sent) {
+      try {
+        await bleChar.writeValue(data);
+        sent = true;
+      } catch(e) { console.log('Method 3 failed:', e.message); }
+    }
+
+    if(sent) {
+      $('v-ble').textContent = cmd;
+      $('v-ble').style.color = cmd === 'OK' ? '#6ee7b7' : (cmd === 'DROWSY' ? '#fca5a5' : '#fbbf24');
+    } else {
+      $('v-ble').textContent = 'ERR';
+      $('v-ble').style.color = '#fca5a5';
+    }
   } catch(err) {
     console.log('BLE send error:', err.message);
     $('v-ble').textContent = 'ERR';
     $('v-ble').style.color = '#fca5a5';
-    // 연결 끊김일 수 있음
-    if(err.message.indexOf('GATT') >= 0) {
-      bleConnected = false;
-      $('ble-dot').classList.remove('on');
-      $('ble-status').textContent = '연결 끊김';
-      $('b-ble').textContent = '재연결';
-    }
   }
 }
 
@@ -241,10 +261,10 @@ $('b-snd').onclick = function(){
 };
 $('b-test').onclick = function(){
   if(!bleConnected) { alert('블루투스 먼저 연결하세요!'); return; }
-  currentState = '';  // 강제 리셋하여 전송 허용
+  currentState = '';
   sendBLE('HELLO');
-  setTimeout(function(){ sendBLE('DROWSY'); }, 500);
-  setTimeout(function(){ sendBLE('OK'); }, 2000);
+  setTimeout(function(){ currentState=''; sendBLE('DROWSY'); }, 1000);
+  setTimeout(function(){ currentState=''; sendBLE('OK'); }, 3000);
 };
 $('b-set').onclick = function(){ $('set').classList.toggle('on'); };
 $('b-ble').onclick = function(){ connectBLE(); };
