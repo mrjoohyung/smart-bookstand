@@ -85,13 +85,14 @@ body{font-family:-apple-system,'Noto Sans KR',sans-serif;background:#0a0a0a;colo
 <div id="nums">
   <div class="n"><div class="nt">EAR</div><div class="nv" id="v-ear" style="color:#6ee7b7">—</div></div>
   <div class="n"><div class="nt">상태</div><div class="nv" id="v-st" style="font-size:15px">—</div></div>
-  <div class="n"><div class="nt">졸음</div><div class="nv" id="v-cnt" style="color:#fbbf24">0</div></div>
+  <div class="n"><div class="nt">감김시간</div><div class="nv" id="v-cnt" style="color:#fbbf24">0s</div></div>
   <div class="n"><div class="nt">전송</div><div class="nv" id="v-ble" style="font-size:13px;color:#888">—</div></div>
 </div>
 
 <div id="btns">
   <button style="background:#333;color:#fff" id="b-reset">초기화</button>
   <button id="b-snd" style="background:#1d4ed8;color:#fff">알림 ON</button>
+  <button style="background:#dc2626;color:#fff" id="b-test">BLE 테스트</button>
   <button style="background:#333;color:#fff" id="b-set">설정</button>
 </div>
 
@@ -127,8 +128,8 @@ function addLog(msg){
 var EAR_TH = 0.21;
 var CLOSE_DUR = 10.0;
 var soundOn = true;
-var drowsyCount = 0;
 var closedSince = 0;
+var totalClosedTime = 0;  // 누적 감김 시간 (밀리초)
 var isAlerted = false;
 var audioCtx = null;
 var videoEl, canvasEl, drawCtx, detector;
@@ -138,8 +139,6 @@ var lastTs = -1;
 var bleDevice = null;
 var bleChar = null;
 var bleConnected = false;
-var lastBleCmd = '';
-var bleSendTimer = 0;
 
 // HM-10 BLE UART UUIDs
 var BLE_SERVICE = 0xFFE0;
@@ -197,38 +196,55 @@ async function connectBLE(){
 
 async function sendBLE(cmd){
   if(!bleConnected || !bleChar) return;
-  if(cmd === lastBleCmd) return; // 같은 명령 중복 방지
-  lastBleCmd = cmd;
 
   try {
     var encoder = new TextEncoder();
-    await bleChar.writeValue(encoder.encode(cmd + '\n'));
+    var data = encoder.encode(cmd + '\n');
+    // HM-10은 writeWithoutResponse를 사용해야 하는 경우가 많음
+    if(bleChar.properties.writeWithoutResponse) {
+      await bleChar.writeValueWithoutResponse(data);
+    } else {
+      await bleChar.writeValue(data);
+    }
     $('v-ble').textContent = cmd;
     $('v-ble').style.color = cmd === 'OK' ? '#6ee7b7' : (cmd === 'DROWSY' ? '#fca5a5' : '#fbbf24');
+    console.log('[BLE SENT] ' + cmd);
   } catch(err) {
-    // 전송 실패 시 재연결 필요할 수 있음
     console.log('BLE send error:', err.message);
+    $('v-ble').textContent = 'ERR';
+    $('v-ble').style.color = '#fca5a5';
+    // 연결 끊김일 수 있음
+    if(err.message.indexOf('GATT') >= 0) {
+      bleConnected = false;
+      $('ble-dot').classList.remove('on');
+      $('ble-status').textContent = '연결 끊김';
+      $('b-ble').textContent = '재연결';
+    }
   }
 }
 
-// 상태가 변할 때만 전송 (0.3초 간격 제한)
+// 상태가 변할 때만 전송 (중복 방지는 하되 rate limit 제거)
 var currentState = '';
 function sendState(state){
   if(state === currentState) return;
   currentState = state;
-  var now = Date.now();
-  if(now - bleSendTimer < 300) return;
-  bleSendTimer = now;
   sendBLE(state);
 }
 
 // ============ BUTTON HANDLERS ============
-$('b-reset').onclick = function(){ drowsyCount=0; $('v-cnt').textContent='0'; };
+$('b-reset').onclick = function(){ closedSince=0; totalClosedTime=0; $('v-cnt').textContent='0s'; $('v-cnt').style.color='#6ee7b7'; };
 $('b-snd').onclick = function(){
   soundOn = !soundOn;
   $('b-snd').textContent = soundOn ? '알림 ON' : '알림 OFF';
   $('b-snd').style.background = soundOn ? '#1d4ed8' : '#555';
   if(soundOn && !audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+};
+$('b-test').onclick = function(){
+  if(!bleConnected) { alert('블루투스 먼저 연결하세요!'); return; }
+  currentState = '';  // 강제 리셋하여 전송 허용
+  sendBLE('HELLO');
+  setTimeout(function(){ sendBLE('DROWSY'); }, 500);
+  setTimeout(function(){ sendBLE('OK'); }, 2000);
 };
 $('b-set').onclick = function(){ $('set').classList.toggle('on'); };
 $('b-ble').onclick = function(){ connectBLE(); };
@@ -354,7 +370,9 @@ function tick(){
     $('badge').textContent = '얼굴 없음'; $('badge').className = 's-warn';
     $('v-ear').textContent = '—';
     $('v-st').textContent = '없음'; $('v-st').style.color = '#888';
-    hideAlert(); closedSince = 0;
+    hideAlert();
+    if(closedSince !== 0){ totalClosedTime += (Date.now() - closedSince); }
+    closedSince = 0;
     sendState('AWAY');
   }
   requestAnimationFrame(tick);
@@ -403,22 +421,42 @@ function checkDrowsy(ear){
   if(ear < EAR_TH){
     if(closedSince === 0) closedSince = now;
     var sec = (now - closedSince) / 1000;
+    var totalSec = (totalClosedTime + (now - closedSince)) / 1000;
+
+    // 누적 감김 시간 표시
+    $('v-cnt').textContent = formatTime(totalSec);
+    if(sec >= CLOSE_DUR) {
+      $('v-cnt').style.color = '#fca5a5';
+    } else if(sec >= 5) {
+      $('v-cnt').style.color = '#fbbf24';
+    } else {
+      $('v-cnt').style.color = '#6ee7b7';
+    }
 
     if(sec >= CLOSE_DUR && !isAlerted){
       isAlerted = true;
-      drowsyCount++;
-      $('v-cnt').textContent = drowsyCount;
       showAlert();
       if(soundOn) playBeep();
-      sendState('DROWSY');  // → 아두이노: 긴급 알림
+      sendState('DROWSY');
     } else if(sec >= 5) {
-      sendState('CLOSED');  // → 아두이노: 주의 (5초 이상)
+      sendState('CLOSED');
     }
   } else {
+    // 눈 떴을 때: 현재 세션 시간을 누적에 더하기
+    if(closedSince !== 0) {
+      totalClosedTime += (now - closedSince);
+    }
     closedSince = 0;
     if(isAlerted){ isAlerted = false; hideAlert(); }
-    sendState('OK');  // → 아두이노: 정상
+    sendState('OK');
   }
+}
+
+function formatTime(sec) {
+  if(sec < 60) return sec.toFixed(1) + 's';
+  var m = Math.floor(sec / 60);
+  var s = Math.floor(sec % 60);
+  return m + ':' + (s < 10 ? '0' : '') + s;
 }
 
 function showAlert(){ $('al').classList.add('on'); }
