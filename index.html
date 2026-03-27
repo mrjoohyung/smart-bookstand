@@ -90,7 +90,6 @@ body{font-family:-apple-system,'Noto Sans KR',sans-serif;background:#0a0a0a;colo
 </div>
 
 <div id="btns">
-  <button style="background:#333;color:#fff" id="b-reset">초기화</button>
   <button id="b-snd" style="background:#1d4ed8;color:#fff">알림 ON</button>
   <button style="background:#dc2626;color:#fff" id="b-test">BLE 테스트</button>
   <button style="background:#333;color:#fff" id="b-set">설정</button>
@@ -105,6 +104,10 @@ body{font-family:-apple-system,'Noto Sans KR',sans-serif;background:#0a0a0a;colo
 <div id="al"><span>눈을 떠!</span></div>
 
 <div id="set">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <span style="font-weight:bold;font-size:16px">설정</span>
+    <button id="b-set-close" style="background:#333;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:14px">닫기</button>
+  </div>
   <div class="sr">
     <label>EAR 임계값</label>
     <input type="range" min="0.08" max="0.25" step="0.01" value="0.15" id="r-th">
@@ -269,7 +272,7 @@ function sendState(state){
 }
 
 // ============ BUTTON HANDLERS ============
-$('b-reset').onclick = function(){ closedSince=0; totalClosedTime=0; $('v-cnt').textContent='0s'; $('v-cnt').style.color='#6ee7b7'; };
+// 초기화 버튼 제거됨
 $('b-snd').onclick = function(){
   soundOn = !soundOn;
   $('b-snd').textContent = soundOn ? '알림 ON' : '알림 OFF';
@@ -306,6 +309,7 @@ $('b-test').onclick = function(){
   }, 3000);
 };
 $('b-set').onclick = function(){ $('set').classList.toggle('on'); };
+$('b-set-close').onclick = function(){ $('set').classList.remove('on'); };
 $('b-ble').onclick = function(){ connectBLE(); };
 $('r-th').oninput = function(){ EAR_TH = parseFloat(this.value); $('sv1').textContent = this.value; $('bar-m').style.left = (EAR_TH/0.4*100)+'%'; };
 $('r-dur').oninput = function(){ CLOSE_DUR = parseFloat(this.value); $('sv2').textContent = parseFloat(this.value).toFixed(1); };
