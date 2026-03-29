@@ -90,6 +90,7 @@ body{font-family:-apple-system,'Noto Sans KR',sans-serif;background:#0a0a0a;colo
 </div>
 
 <div id="btns">
+  <button style="background:#333;color:#fff" id="b-reset">초기화</button>
   <button id="b-snd" style="background:#1d4ed8;color:#fff">알림 ON</button>
   <button style="background:#dc2626;color:#fff" id="b-test">BLE 테스트</button>
   <button style="background:#333;color:#fff" id="b-set">설정</button>
@@ -272,7 +273,7 @@ function sendState(state){
 }
 
 // ============ BUTTON HANDLERS ============
-// 초기화 버튼 제거됨
+$('b-reset').onclick = function(){ closedSince=0; totalClosedTime=0; $('v-cnt').textContent='0s'; $('v-cnt').style.color='#6ee7b7'; };
 $('b-snd').onclick = function(){
   soundOn = !soundOn;
   $('b-snd').textContent = soundOn ? '알림 ON' : '알림 OFF';
