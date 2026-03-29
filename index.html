@@ -72,10 +72,7 @@ body{font-family:-apple-system,'Noto Sans KR',sans-serif;background:#0a0a0a;colo
   <button id="b-ble">블루투스 연결</button>
 </div>
 
-<div id="bar-w">
-  <div id="bar-bg"><div id="bar-f"></div><div id="bar-m"></div></div>
-  <div id="bar-l"><span>눈 감김</span><span>EAR</span><span>눈 뜸</span></div>
-</div>
+
 
 <div id="vid-wrap">
   <video id="vid" playsinline autoplay muted></video>
@@ -312,9 +309,8 @@ $('b-test').onclick = function(){
 $('b-set').onclick = function(){ $('set').classList.toggle('on'); };
 $('b-set-close').onclick = function(){ $('set').classList.remove('on'); };
 $('b-ble').onclick = function(){ connectBLE(); };
-$('r-th').oninput = function(){ EAR_TH = parseFloat(this.value); $('sv1').textContent = this.value; $('bar-m').style.left = (EAR_TH/0.4*100)+'%'; };
+$('r-th').oninput = function(){ EAR_TH = parseFloat(this.value); $('sv1').textContent = this.value; };
 $('r-dur').oninput = function(){ CLOSE_DUR = parseFloat(this.value); $('sv2').textContent = parseFloat(this.value).toFixed(1); };
-$('bar-m').style.left = (EAR_TH / 0.4 * 100) + '%';
 
 // ============ MAIN INIT ============
 async function main(){
@@ -466,14 +462,12 @@ function drawDots(pts,idx){
 // ============ UI ============
 function updateDisplay(ear){
   $('v-ear').textContent = ear.toFixed(2);
-  var pct = Math.min(Math.max(ear/0.4*100,2),100);
-  $('bar-f').style.width = pct+'%';
   if(ear >= EAR_TH){
-    $('v-ear').style.color='#6ee7b7'; $('bar-f').style.background='#059669';
+    $('v-ear').style.color='#6ee7b7';
     $('v-st').textContent='집중'; $('v-st').style.color='#6ee7b7';
     $('badge').textContent='집중 중'; $('badge').className='s-ok';
   } else {
-    $('v-ear').style.color='#fca5a5'; $('bar-f').style.background='#dc2626';
+    $('v-ear').style.color='#fca5a5';
     $('v-st').textContent='감김!'; $('v-st').style.color='#fca5a5';
     $('badge').textContent='눈 감김'; $('badge').className='s-bad';
   }
